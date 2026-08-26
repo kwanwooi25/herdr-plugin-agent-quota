@@ -115,9 +115,11 @@ Herdr sidebar, under the agent's own entry:
 ```
 
 A background reporter pushes pane-metadata tokens
-(`herdr pane report-metadata`) to every live agent pane once a minute, with a
-5-minute TTL so rows disappear if the reporter stops. Toggle it (a
-`[[startup]]` hook resumes it across server restarts while enabled):
+(`herdr pane report-metadata`) to every live agent pane. Quota snapshots refresh
+once a minute; omp session files are watched separately so model and vendor
+changes reach the sidebar within about 250 ms. Tokens have a 5-minute TTL so
+rows disappear if the reporter stops. Toggle it (a `[[startup]]` hook resumes
+it across server restarts while enabled):
 
 ```bash
 herdr plugin action invoke herdr-plugin-agent-quota.sidebar
@@ -169,9 +171,10 @@ omp = "claude"
   `--oneline` honors the same setting.
 - `kindMap` — which vendor's quota an agent kind shows; defaults to
   `claude→CC, codex→CDX, grok→GRX, omp→CC`.
-- `showModel` — `true` (default) reads each omp pane's active model from its
-  session log, fills `$umodel`, and routes that pane's quota to the model's
-  vendor; `false` keeps the static `kindMap` routing and hides the token.
+- `showModel` — `true` (default) watches each omp pane's session log, fills
+  `$umodel` within about 250 ms of a model change, and routes that pane's quota
+  to the model's vendor; `false` keeps the static `kindMap` routing and hides
+  the token.
 
 Live snapshots are also cached on disk in the plugin state dir, both as an
 offline fallback that beats older file sources and as a cross-process fetch
@@ -188,6 +191,10 @@ tab_bar_right = [
   { type = "command", command = "node /path/to/herdr-plugin-agent-quota/index.js --oneline", interval_seconds = 60, timeout_seconds = 15 },
 ]
 ```
+
+Herdr 0.8.2 tab-bar entries do not expose per-entry foreground/style fields,
+and command output has terminal control sequences stripped. Colored `--oneline`
+segments therefore require upstream Herdr support; ANSI output cannot add them.
 
 Non-interactive report (same data, plain text):
 

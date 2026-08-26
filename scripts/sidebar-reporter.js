@@ -25,6 +25,7 @@ const configDir = process.env.HERDR_PLUGIN_CONFIG_DIR || null;
 
 const SOURCE = "herdr-plugin-agent-quota";
 const INTERVAL_MS = 60_000;
+const MODEL_POLL_MS = 250;
 const TTL_MS = 5 * 60_000; // tokens vanish shortly after the reporter dies
 const GAUGE_W = 5;
 
@@ -141,10 +142,102 @@ function vendorForModel(model) {
   if (m.includes("grok")) return "grok";
   return null;
 }
+let lastSeq = 0;
+
+function nextSeq() {
+  lastSeq = Math.max(Date.now(), lastSeq + 1);
+  return String(lastSeq);
+}
+
+function agentTokens(agent, limits, cfg) {
+  let vendor = cfg.kindMap[agent.agent];
+  let model = null;
+  if (
+    cfg.showModel &&
+    agent.agent === "omp" &&
+    agent.agent_session &&
+    agent.agent_session.kind === "path"
+  ) {
+    model = ompModel(agent.agent_session.value);
+    if (model) vendor = vendorForModel(model) || vendor;
+  }
+  const tokens = (vendor && usageTokens(vendor, limits[vendor], cfg.display)) || {};
+  if (model) tokens.umodel = model;
+  return Object.keys(tokens).length > 0 ? { model, tokens } : null;
+}
+
+function reportAgent(agent, limits, cfg, snapshot = agentTokens(agent, limits, cfg)) {
+  if (!snapshot) return null;
+  const args = [
+    "pane",
+    "report-metadata",
+    agent.pane_id,
+    "--source",
+    SOURCE,
+    "--seq",
+    nextSeq(),
+    "--ttl-ms",
+    String(TTL_MS),
+  ];
+  for (const name of ALL_TOKENS) {
+    if (snapshot.tokens[name] !== undefined) args.push("--token", `${name}=${snapshot.tokens[name]}`);
+    else args.push("--clear-token", name);
+  }
+  run(args);
+  return snapshot.model;
+}
+
+function refreshModel(runtime, paneId) {
+  const agent = runtime.agents.get(paneId);
+  if (!agent) return;
+  const cfg = loadConfig();
+  const snapshot = agentTokens(agent, runtime.limits, cfg);
+  const model = snapshot && snapshot.model;
+  if (model === runtime.models.get(paneId)) return;
+  try {
+    reportAgent(agent, runtime.limits, cfg, snapshot);
+    runtime.models.set(paneId, model);
+    runtime.reported.add(paneId);
+  } catch (e) {
+    process.stderr.write(`[${new Date().toISOString()}] model report ${paneId}: ${e.message}\n`);
+  }
+}
+
+function syncModelWatchers(runtime, cfg) {
+  const desired = new Map();
+  if (cfg.showModel) {
+    for (const agent of runtime.agents.values()) {
+      if (agent.agent === "omp" && agent.agent_session && agent.agent_session.kind === "path") {
+        desired.set(agent.pane_id, agent.agent_session.value);
+      }
+    }
+  }
+
+  for (const [paneId, watched] of runtime.watchers) {
+    if (desired.get(paneId) === watched.path) continue;
+    fs.unwatchFile(watched.path, watched.listener);
+    runtime.watchers.delete(paneId);
+    runtime.models.delete(paneId);
+  }
+  for (const [paneId, sessionPath] of desired) {
+    if (runtime.watchers.has(paneId)) continue;
+    const listener = () => refreshModel(runtime, paneId);
+    fs.watchFile(sessionPath, { persistent: false, interval: MODEL_POLL_MS }, listener);
+    runtime.watchers.set(paneId, { path: sessionPath, listener });
+  }
+}
+
+function closeModelWatchers(runtime) {
+  for (const watched of runtime.watchers.values()) {
+    fs.unwatchFile(watched.path, watched.listener);
+  }
+  runtime.watchers.clear();
+}
+
 
 // ------------------------------------------------------------------ loop
 
-async function tick(reported) {
+async function tick(runtime) {
   const { collectLimits } = require("../lib/limits");
   const limits = await collectLimits();
   process.stderr.write(
@@ -156,37 +249,26 @@ async function tick(reported) {
   );
   const cfg = loadConfig();
   const agents = run(["agent", "list"]).result.agents || [];
-  const seq = String(Date.now());
+  runtime.limits = limits;
+  runtime.agents = new Map(agents.filter((a) => a.pane_id).map((a) => [a.pane_id, a]));
+  syncModelWatchers(runtime, cfg);
+
   const seen = new Set();
-  for (const a of agents) {
-    if (!a.pane_id) continue;
-    let vendor = cfg.kindMap[a.agent];
-    let model = null;
-    if (cfg.showModel && a.agent === "omp" && a.agent_session && a.agent_session.kind === "path") {
-      model = ompModel(a.agent_session.value);
-      if (model) vendor = vendorForModel(model) || vendor;
-    }
-    const tokens = vendor ? usageTokens(vendor, limits[vendor], cfg.display) : null;
-    if (!tokens) continue;
-    if (model) tokens.umodel = model;
-    const args = ["pane", "report-metadata", a.pane_id, "--source", SOURCE, "--seq", seq, "--ttl-ms", String(TTL_MS)];
-    for (const name of ALL_TOKENS) {
-      if (tokens[name] !== undefined) args.push("--token", `${name}=${tokens[name]}`);
-      else args.push("--clear-token", name);
-    }
+  for (const agent of runtime.agents.values()) {
     try {
-      run(args);
-      seen.add(a.pane_id);
+      const model = reportAgent(agent, limits, cfg);
+      runtime.models.set(agent.pane_id, model);
+      seen.add(agent.pane_id);
     } catch (e) {
-      process.stderr.write(`[${new Date().toISOString()}] report ${a.pane_id}: ${e.message}\n`);
+      process.stderr.write(`[${new Date().toISOString()}] report ${agent.pane_id}: ${e.message}\n`);
     }
   }
-  reported.clear();
-  for (const p of seen) reported.add(p);
+  runtime.reported.clear();
+  for (const paneId of seen) runtime.reported.add(paneId);
 }
 
 function clearAll(reported) {
-  const seq = String(Date.now());
+  const seq = nextSeq();
   for (const paneId of reported) {
     const args = ["pane", "report-metadata", paneId, "--source", SOURCE, "--seq", seq];
     for (const name of ALL_TOKENS) args.push("--clear-token", name);
@@ -202,9 +284,16 @@ async function runMode() {
   if (other && other !== process.pid) process.exit(0); // already running
   fs.writeFileSync(pidPath, String(process.pid));
 
-  const reported = new Set();
+  const runtime = {
+    agents: new Map(),
+    limits: {},
+    models: new Map(),
+    reported: new Set(),
+    watchers: new Map(),
+  };
   const quit = () => {
-    clearAll(reported);
+    closeModelWatchers(runtime);
+    clearAll(runtime.reported);
     try {
       if (parseInt(fs.readFileSync(pidPath, "utf8"), 10) === process.pid) fs.rmSync(pidPath);
     } catch {}
@@ -218,7 +307,7 @@ async function runMode() {
     if (busy) return;
     busy = true;
     try {
-      await tick(reported);
+      await tick(runtime);
     } catch (e) {
       process.stderr.write(`[${new Date().toISOString()}] tick: ${e.stack || e}\n`);
     } finally {
