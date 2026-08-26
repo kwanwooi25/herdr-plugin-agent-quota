@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Agent Usage dashboard: token & cost usage for Claude Code, Codex, and Grok.
+// Agent Quota dashboard: token & cost usage for Claude Code, Codex, and Grok.
 //
 // Interactive TUI when run in a Herdr popup pane (or any TTY).
 // `node index.js --report [--days N]` prints a plain-text report and exits.
@@ -99,7 +99,7 @@ function render(data, opts) {
   const lines = [];
 
   lines.push(
-    bold(" Agent Usage ") +
+    bold(" Agent Quota ") +
       dim(`Claude Code / Codex / Grok   ${refreshedAt}`),
   );
   if (interactive) {

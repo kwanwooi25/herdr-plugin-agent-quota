@@ -1,4 +1,4 @@
-# Agent Usage — Herdr plugin
+# Agent Quota — Herdr plugin
 
 Token and cost usage dashboard for **Claude Code**, **Codex**, and **Grok**,
 rendered in a Herdr popup pane. Zero dependencies, no build step (Node ≥ 18).
@@ -34,7 +34,7 @@ herdr plugin link /path/to/herdr-plugin-agent-quota
 Open the dashboard popup:
 
 ```bash
-herdr plugin pane open --plugin kwanwooi25.agent-usage --entrypoint dashboard
+herdr plugin pane open --plugin kwanwooi25.agent-quota --entrypoint dashboard
 ```
 
 Or bind the action to a key in `~/.config/herdr/config.toml`:
@@ -43,7 +43,7 @@ Or bind the action to a key in `~/.config/herdr/config.toml`:
 [[keys.command]]
 key = "prefix+u"
 type = "plugin_action"
-command = "kwanwooi25.agent-usage.open"
+command = "kwanwooi25.agent-quota.open"
 description = "agent usage dashboard"
 ```
 
@@ -89,14 +89,14 @@ An expired window (reset time already passed with no fresh sample) shows a
 dim `-%` instead of a stale percentage. Toggle the bar per tab:
 
 ```bash
-herdr plugin action invoke kwanwooi25.agent-usage.statusbar
+herdr plugin action invoke kwanwooi25.agent-quota.statusbar
 ```
 
 ```toml
 [[keys.command]]
 key = "prefix+shift+u"
 type = "plugin_action"
-command = "kwanwooi25.agent-usage.statusbar"
+command = "kwanwooi25.agent-quota.statusbar"
 description = "toggle usage statusbar"
 ```
 
@@ -120,7 +120,7 @@ A background reporter pushes pane-metadata tokens
 `[[startup]]` hook resumes it across server restarts while enabled):
 
 ```bash
-herdr plugin action invoke kwanwooi25.agent-usage.sidebar
+herdr plugin action invoke kwanwooi25.agent-quota.sidebar
 ```
 
 Metadata values are plain text (ANSI is stripped), so severity color uses
@@ -153,7 +153,7 @@ rows = [
 ```
 
 Behavior is configured with `sidebar.toml` in the plugin config dir
-(`herdr plugin config-dir kwanwooi25.agent-usage`), seeded with commented
+(`herdr plugin config-dir kwanwooi25.agent-quota`), seeded with commented
 defaults on first run (a legacy `sidebar.json` is migrated automatically):
 
 ```toml
@@ -199,7 +199,7 @@ node index.js --report --days 30
 
 Grok costs are actuals recorded by the Grok CLI. Claude Code and Codex costs
 are **estimates** computed from `pricing.toml` in the plugin config dir
-(`herdr plugin config-dir kwanwooi25.agent-usage`). The file is seeded with
+(`herdr plugin config-dir kwanwooi25.agent-quota`). The file is seeded with
 commented defaults on first run (a legacy `pricing.json` is migrated
 automatically) — edit it to match your models; rules match by
 case-insensitive substring on the model name, first match wins:

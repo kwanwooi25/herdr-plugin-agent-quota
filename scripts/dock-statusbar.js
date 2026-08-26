@@ -13,7 +13,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const herdr = process.env.HERDR_BIN_PATH ?? "herdr";
-const pluginId = process.env.HERDR_PLUGIN_ID ?? "kwanwooi25.agent-usage";
+const pluginId = process.env.HERDR_PLUGIN_ID ?? "kwanwooi25.agent-quota";
 const stateDir = process.env.HERDR_PLUGIN_STATE_DIR || null;
 
 const BAR_ROWS = 5; // header + three agent rows + breathing room

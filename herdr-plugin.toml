@@ -1,5 +1,5 @@
-id = "kwanwooi25.agent-usage"
-name = "Agent Usage"
+id = "kwanwooi25.agent-quota"
+name = "Agent Quota"
 version = "0.1.0"
 min_herdr_version = "0.8.0"
 description = "Token and cost usage dashboard for Claude Code, Codex, and Grok"
@@ -28,7 +28,7 @@ command = ["node", "scripts/sidebar-reporter.js", "--resume"]
 
 [[panes]]
 id = "dashboard"
-title = "Agent Usage"
+title = "Agent Quota"
 placement = "popup"
 width = "85%"
 height = "85%"
@@ -36,6 +36,6 @@ command = ["node", "index.js"]
 
 [[panes]]
 id = "statusbar"
-title = "Agent Usage Bar"
+title = "Agent Quota Bar"
 placement = "split"
 command = ["node", "index.js", "--statusbar"]
