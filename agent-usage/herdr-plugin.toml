@@ -1,0 +1,41 @@
+id = "kwanwooi25.agent-usage"
+name = "Agent Usage"
+version = "0.9.1"
+min_herdr_version = "0.8.0"
+description = "Token and cost usage dashboard for Claude Code, Codex, and Grok"
+platforms = ["linux", "macos"]
+
+[[actions]]
+id = "open"
+title = "Open agent usage dashboard"
+contexts = ["workspace"]
+command = ["node", "scripts/open-pane.js"]
+
+[[actions]]
+id = "statusbar"
+title = "Toggle usage statusbar"
+contexts = ["workspace"]
+command = ["node", "scripts/dock-statusbar.js"]
+
+[[actions]]
+id = "sidebar"
+title = "Toggle sidebar usage tokens"
+contexts = ["workspace"]
+command = ["node", "scripts/sidebar-reporter.js", "--toggle"]
+
+[[startup]]
+command = ["node", "scripts/sidebar-reporter.js", "--resume"]
+
+[[panes]]
+id = "dashboard"
+title = "Agent Usage"
+placement = "popup"
+width = "85%"
+height = "85%"
+command = ["node", "index.js"]
+
+[[panes]]
+id = "statusbar"
+title = "Agent Usage Bar"
+placement = "split"
+command = ["node", "index.js", "--statusbar"]
