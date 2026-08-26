@@ -23,7 +23,7 @@ const herdr = process.env.HERDR_BIN_PATH ?? "herdr";
 const stateDir = process.env.HERDR_PLUGIN_STATE_DIR || path.join(__dirname, "..", ".state");
 const configDir = process.env.HERDR_PLUGIN_CONFIG_DIR || null;
 
-const SOURCE = "kwanwooi25.agent-quota";
+const SOURCE = "herdr-plugin-agent-quota";
 const INTERVAL_MS = 60_000;
 const TTL_MS = 5 * 60_000; // tokens vanish shortly after the reporter dies
 const GAUGE_W = 5;

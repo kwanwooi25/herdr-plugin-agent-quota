@@ -4,12 +4,12 @@
 //   [[keys.command]]
 //   key = "prefix+u"
 //   type = "plugin_action"
-//   command = "kwanwooi25.agent-quota.open"
+//   command = "herdr-plugin-agent-quota.open"
 "use strict";
 const { spawnSync } = require("node:child_process");
 
 const herdr = process.env.HERDR_BIN_PATH ?? "herdr";
-const pluginId = process.env.HERDR_PLUGIN_ID ?? "kwanwooi25.agent-quota";
+const pluginId = process.env.HERDR_PLUGIN_ID ?? "herdr-plugin-agent-quota";
 
 const result = spawnSync(
   herdr,
