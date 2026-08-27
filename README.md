@@ -55,7 +55,9 @@ Keys inside the dashboard: `1`/`2`/`3` switch 7/14/30-day periods,
 A compact always-on rate-limit bar docked at the bottom of the leftmost pane
 column (under a sidebar pane such as herdr-sidebar when one is docked left).
 Per agent it shows time until the limit window resets and a colored gauge per
-window (green under 50%, yellow under 80%, red from 80%), refreshed once a minute:
+window, refreshed once a minute. Gauge fill and percentage follow the
+`sidebar.toml` `display` setting; severity colors always track consumption
+(green under 50%, yellow under 80%, red from 80%):
 
 ```
  Claude Code  resets in 2d 3h
@@ -168,7 +170,7 @@ omp = "claude"
 
 - `display` — `"used"` (default) shows consumed percentage; `"remaining"`
   shows what is left (gauges follow, severity still tracks consumption).
-  `--oneline` honors the same setting.
+  The sidebar, status bar, and `--oneline` output honor the same setting.
 - `kindMap` — which vendor's quota an agent kind shows; defaults to
   `claude→CC, codex→CDX, grok→GRX, omp→CC`.
 - `showModel` — `true` (default) watches each omp pane's session log, fills

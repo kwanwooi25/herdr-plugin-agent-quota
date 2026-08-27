@@ -6,6 +6,7 @@
 "use strict";
 
 const { collectUsage } = require("./lib/collect");
+const { loadSidebarConfig } = require("./lib/config");
 
 const AGENTS = ["claude", "codex", "grok"];
 const AGENT_LABEL = { claude: "Claude Code", codex: "Codex", grok: "Grok" };
@@ -322,9 +323,10 @@ function fmtAge(ms) {
   return `${Math.floor(s / 86400)}d`;
 }
 
-function gauge(pct, width) {
+function gauge(pct, width, usedPct = pct) {
   const p = Math.max(0, Math.min(100, pct));
-  const color = p >= 80 ? 196 : p >= 50 ? 178 : 70; // red / yellow / green
+  const used = Math.max(0, Math.min(100, usedPct));
+  const color = used >= 80 ? 196 : used >= 50 ? 178 : 70; // red / yellow / green
   const filled = Math.max(p > 0 ? 1 : 0, Math.round((p / 100) * width));
   const bar = fg(color, "\u2501".repeat(filled)) + dim("\u2501".repeat(width - filled));
   return `${bar} ${fg(color, pad(Math.round(p) + "%", 3, true))}`;
@@ -339,6 +341,7 @@ async function statusbarMode() {
   const restore = () => out.write("\x1b[?25h\x1b[?1049l");
 
   const draw = () => {
+    const display = loadSidebarConfig(configDir).display;
     const cols = out.columns || 44;
     const rows = out.rows || 8;
     const barW = cols >= 46 ? 6 : 4;
@@ -357,11 +360,14 @@ async function statusbarMode() {
       head += next ? dim(`resets in ${fmtEta(next)}`) : dim("window elapsed");
       if (stale) head += dim(` \u00b7 ${fmtAge(snap.asOfMs)} ago`);
       lines.push(head);
-      const cells = snap.windows.map((w) =>
-        w.resetsAt && w.resetsAt < Date.now()
-          ? `${dim(pad(w.label, 2))} ${dim("\u2500".repeat(barW))} ${dim(" -%")}`
-          : `${dim(pad(w.label, 2))} ${gauge(w.pct, barW)}`,
-      );
+      const cells = snap.windows.map((w) => {
+        if (w.resetsAt && w.resetsAt < Date.now()) {
+          return `${dim(pad(w.label, 2))} ${dim("\u2500".repeat(barW))} ${dim(" -%")}`;
+        }
+        const used = Math.max(0, Math.min(100, w.pct));
+        const shown = display === "remaining" ? 100 - used : used;
+        return `${dim(pad(w.label, 2))} ${gauge(shown, barW, used)}`;
+      });
       lines.push("   " + cells.join("  "));
     }
     out.write(
@@ -441,7 +447,7 @@ if (argv.includes("--limits")) {
   // One-line plain-text summary for a `ui.tab_bar_right` command entry.
   // Honors the same sidebar.toml display mode (used | remaining).
   const { collectLimits } = require("./lib/limits");
-  const display = require("./lib/config").loadSidebarConfig(configDir).display;
+  const display = loadSidebarConfig(configDir).display;
   collectLimits().then(
     (l) => {
       const parts = [];
