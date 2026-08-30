@@ -67,13 +67,13 @@ function gaugeText(pct) {
 }
 
 // Sidebar tokens per pane. Dynamic color via severity-variant tokens: each
-// window slot (u1, u2) has _ok/_warn/_bad variants, statically colored in
+// window slot (u1, u2, u3) has _ok/_warn/_bad variants, statically colored in
 // [ui.sidebar.agents] rows; exactly one variant per slot carries the value,
 // the rest are cleared, and Herdr hides valueless tokens. `_na` carries an
 // elapsed window (reset passed, no fresh sample) as a dim honest `-%`, so a
 // stale fallback still shows every window instead of dropping the session
 // one. `umodel` names the model an omp pane is currently running.
-const SLOTS = 2;
+const SLOTS = 3;
 const VARIANTS = ["ok", "warn", "bad", "na"];
 const ALL_TOKENS = ["upfx"]
   .concat(Array.from({ length: SLOTS }, (_, i) => VARIANTS.map((s) => `u${i + 1}_${s}`)).flat())
@@ -92,6 +92,23 @@ function fmtAge(ms) {
   return `${Math.round(m / 1440)}d`;
 }
 
+function fmtReset(ms) {
+  const reset = new Date(ms);
+  if (!Number.isFinite(reset.getTime())) return null;
+  const now = new Date();
+  const sameDay =
+    reset.getFullYear() === now.getFullYear() &&
+    reset.getMonth() === now.getMonth() &&
+    reset.getDate() === now.getDate();
+  const hour = reset.getHours() % 12 || 12;
+  const minute = String(reset.getMinutes()).padStart(2, "0");
+  const period = reset.getHours() < 12 ? "am" : "pm";
+  if (sameDay) return `${hour}:${minute}${period}`;
+  const month = reset.toLocaleString("en-US", { month: "short" });
+  const clock = minute === "00" ? `${hour}${period}` : `${hour}:${minute}${period}`;
+  return `${month} ${reset.getDate()} ${clock}`;
+}
+
 function usageTokens(vendor, snap, display) {
   if (!snap || snap.windows.length === 0) return null;
   // A stale fallback sample (no live data for a while) must not wear a
@@ -105,11 +122,14 @@ function usageTokens(vendor, snap, display) {
     }
     const used = Math.max(0, Math.min(100, w.pct));
     const shown = Math.round(display === "remaining" ? 100 - used : used);
+    const reset = w.resetsAt ? fmtReset(w.resetsAt) : null;
+    const resetSuffix = reset ? ` ↻${reset}` : "";
     if (stale) {
-      tokens[`u${i + 1}_na`] = `${w.label} ${shown}% \u00b7${fmtAge(snap.asOfMs)}`;
+      tokens[`u${i + 1}_na`] = `${w.label} ${shown}% ·${fmtAge(snap.asOfMs)}${resetSuffix}`;
       return;
     }
-    tokens[`u${i + 1}_${severity(used)}`] = `${w.label} ${gaugeText(shown)} ${shown}%`;
+    tokens[`u${i + 1}_${severity(used)}`] =
+      `${w.label} ${gaugeText(shown)} ${shown}%${resetSuffix}`;
   });
   return tokens;
 }

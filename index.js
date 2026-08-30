@@ -304,23 +304,33 @@ async function interactiveMode(periodDays) {
 }
 
 // Compact always-on rate-limit view for a short pane docked under a sidebar
-// column: per agent, time until the window resets plus a gauge per limit
-// window. Refreshes automatically once a minute.
-function fmtEta(ms) {
-  let s = Math.max(0, Math.round((ms - Date.now()) / 1000));
-  const d = Math.floor(s / 86400);
-  const h = Math.floor((s % 86400) / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  if (d > 0) return `${d}d ${h}h`;
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
-}
-
+// column. One global header is followed by one line per quota window.
 function fmtAge(ms) {
   const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
   if (s < 3600) return `${Math.floor(s / 60)}m`;
   if (s < 86400) return `${Math.floor(s / 3600)}h`;
   return `${Math.floor(s / 86400)}d`;
+}
+
+function localTimeZone() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "local";
+}
+
+function fmtReset(ms) {
+  const reset = new Date(ms);
+  if (!Number.isFinite(reset.getTime())) return null;
+  const now = new Date();
+  const sameDay =
+    reset.getFullYear() === now.getFullYear() &&
+    reset.getMonth() === now.getMonth() &&
+    reset.getDate() === now.getDate();
+  const hour = reset.getHours() % 12 || 12;
+  const minute = String(reset.getMinutes()).padStart(2, "0");
+  const period = reset.getHours() < 12 ? "am" : "pm";
+  if (sameDay) return `${hour}:${minute}${period}`;
+  const month = reset.toLocaleString("en-US", { month: "short" });
+  const clock = minute === "00" ? `${hour}${period}` : `${hour}:${minute}${period}`;
+  return `${month} ${reset.getDate()} ${clock}`;
 }
 
 function gauge(pct, width, usedPct = pct) {
@@ -343,37 +353,34 @@ async function statusbarMode() {
   const draw = () => {
     const display = loadSidebarConfig(configDir).display;
     const cols = out.columns || 44;
-    const rows = out.rows || 8;
     const barW = cols >= 46 ? 6 : 4;
-    const lines = [];
+    const lines = [` ${bold("Quota")} ${dim(`· ${display} · ${localTimeZone()}`)}`];
     for (const a of AGENTS) {
       const snap = limits[a];
-      const name = fg(AGENT_COLOR[a], bold(AGENT_LABEL[a]));
+      const provider = fg(AGENT_COLOR[a], bold(pad(AGENT_SHORT[a], 3)));
       if (!snap || snap.windows.length === 0) {
-        lines.push(` ${name}  ${dim(a === "grok" ? "quota not exposed" : "no data")}`);
+        const diagnostic = a === "grok" ? "quota not exposed" : "no data";
+        lines.push(` ${provider} ${dim(diagnostic)}`);
         continue;
       }
-      const future = snap.windows.filter((w) => w.resetsAt > Date.now());
-      const next = future.length ? Math.min(...future.map((w) => w.resetsAt)) : null;
-      const stale = Date.now() - snap.asOfMs > 6 * 3600_000;
-      let head = ` ${name}  `;
-      head += next ? dim(`resets in ${fmtEta(next)}`) : dim("window elapsed");
-      if (stale) head += dim(` \u00b7 ${fmtAge(snap.asOfMs)} ago`);
-      lines.push(head);
-      const cells = snap.windows.map((w) => {
+      const stale = !snap.live && Date.now() - snap.asOfMs > 6 * 3600_000;
+      for (const w of snap.windows) {
+        const label = dim(pad(w.label, 10));
         if (w.resetsAt && w.resetsAt < Date.now()) {
-          return `${dim(pad(w.label, 2))} ${dim("\u2500".repeat(barW))} ${dim(" -%")}`;
+          lines.push(` ${provider} ${label} ${dim("\u2501".repeat(barW))} ${dim(" -%")}`);
+          continue;
         }
         const used = Math.max(0, Math.min(100, w.pct));
         const shown = display === "remaining" ? 100 - used : used;
-        return `${dim(pad(w.label, 2))} ${gauge(shown, barW, used)}`;
-      });
-      lines.push("   " + cells.join("  "));
+        const age = stale ? dim(` ·${fmtAge(snap.asOfMs)} old`) : "";
+        const reset = w.resetsAt ? fmtReset(w.resetsAt) : null;
+        const resetSuffix = reset ? dim(` ↻${reset}`) : "";
+        lines.push(` ${provider} ${label} ${gauge(shown, barW, used)}${age}${resetSuffix}`);
+      }
     }
     out.write(
       "\x1b[H\x1b[2J" +
         lines
-          .slice(0, rows)
           .map((l) => clip(l, cols))
           .join("\x1b[K\r\n") +
         "\x1b[K",

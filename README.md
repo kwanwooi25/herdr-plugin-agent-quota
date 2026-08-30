@@ -54,27 +54,34 @@ Keys inside the dashboard: `1`/`2`/`3` switch 7/14/30-day periods,
 
 A compact always-on rate-limit bar docked at the bottom of the leftmost pane
 column (under a sidebar pane such as herdr-sidebar when one is docked left).
-Per agent it shows time until the limit window resets and a colored gauge per
-window, refreshed once a minute. Gauge fill and percentage follow the
-`sidebar.toml` `display` setting; severity colors always track consumption
-(green under 50%, yellow under 80%, red from 80%):
+It has one global header and one compact line per collected quota window, so a
+narrow bar never combines or drops provider windows. The header names the
+configured display mode and the machine's local timezone. Each live window
+ends in `↻<local time>`: same-day resets look like `↻10:40pm`; later resets
+look like `↻Sep 4 4pm`. Gauge fill and percentage follow the `sidebar.toml`
+`display` setting; severity colors always track consumption (green under 50%,
+yellow under 80%, red from 80%):
 
 ```
- Claude Code  resets in 2d 3h
-   5h ━━━───  32%  wk ━━━━──  70%
- Codex  resets in 6d 21h
-   wk ━─────   3%
- Grok  no local data
+ Quota · used · Asia/Seoul
+ CC  5h     ━━──  55% ↻10:40pm
+ CC  wk     ━───  36% ↻Sep 4 4pm
+ CC  Fable  ━━━─  71% ↻Sep 4 4pm
+ CDX wk     ━───  28% ↻Sep 6 9pm
 ```
 
 Live sources are preferred — the same account endpoints the CLIs themselves
-use — with local files as offline fallback (a dim `· 2h ago` marker appears
-when falling back to data older than 6 hours):
+use — with local files as offline fallback (a dim `·2h old` marker appears on
+each affected row when falling back to data older than 6 hours):
 
 - **Claude Code** — `api.anthropic.com/api/oauth/usage` with the Claude Code
   OAuth token (macOS Keychain `Claude Code-credentials`, or
-  `~/.claude/.credentials.json`). Fallback: statusline payloads cached by the
-  HUD under `~/.claude/hud/cache/stdin.*.json`.
+  `~/.claude/.credentials.json`). Current `limits` arrays are authoritative:
+  every numeric session, all-model weekly, and model-scoped weekly limit is
+  collected (`5h`, `wk`, and the scope model name, such as `Fable`). Legacy
+  named fields remain supported when the array is absent. Offline fallback:
+  statusline payloads cached by the HUD under
+  `~/.claude/hud/cache/stdin.*.json`.
 - **Codex** — `chatgpt.com/backend-api/wham/usage` with the tokens in
   `~/.codex/auth.json`. Fallback: `rate_limits` on `token_count` events in
   recent rollout files.
@@ -107,13 +114,15 @@ Inside the bar: `r` rescans, `q`/`Esc` closes.
 
 ### Sidebar usage tokens
 
-Renders each agent's quota as a colored text-gauge row directly inside the
-Herdr sidebar, under the agent's own entry:
+Renders each agent's quota as three colored text-gauge rows directly inside
+the Herdr sidebar, under the agent's own entry:
 
 ```
 ● tamche
   omp · claude-fable-5
-  CC · 5h -% · wk ▰▰▰▱▱ 55%
+  CC 5h ▰▰▰▱▱ 55% ↻10:40pm
+     wk ▰▰▱▱▱ 36% ↻Sep 4 4pm
+     Fable ▰▰▰▰▱ 71% ↻Sep 4 4pm
 ```
 
 A background reporter pushes pane-metadata tokens
@@ -128,14 +137,15 @@ herdr plugin action invoke herdr-plugin-agent-quota.sidebar
 ```
 
 Metadata values are plain text (ANSI is stripped), so severity color uses
-variant tokens instead: each window slot (`u1`, `u2`) has `_ok`/`_warn`/`_bad`
-variants and the reporter fills exactly one per slot (used < 50% → ok,
-< 80% → warn, ≥ 80% → bad); Herdr hides the valueless rest. `_na` carries an
-elapsed window (reset passed, no fresh sample) as an honest `5h -%` so every
-window always appears, and `$umodel` names the model an omp pane is running
-(read from its session log; that pane's quota follows the model's vendor).
-Add the rows to `~/.config/herdr/config.toml` and run
-`herdr server reload-config`:
+variant tokens instead: each window slot (`u1`, `u2`, `u3`) has
+`_ok`/`_warn`/`_bad` variants and the reporter fills exactly one per slot
+(used < 50% → ok, < 80% → warn, ≥ 80% → bad); Herdr hides the valueless rest.
+`_na` carries an elapsed window (reset passed, no fresh sample) as an honest
+`5h -%`, while a stale current window includes its sample age. Live windows
+carry the same compact local `↻` reset notation as the statusbar. `$umodel`
+names the model an omp pane is running (read from its session log; that pane's
+quota follows the model's vendor). Add the three separate rows to
+`~/.config/herdr/config.toml` and run `herdr server reload-config`:
 
 ```toml
 [ui.sidebar.agents]
@@ -148,10 +158,18 @@ rows = [
     { token = "$u1_warn", fg = "#cdaa65" },
     { token = "$u1_bad", fg = "#ca6470" },
     { token = "$u1_na", dim = true },
+  ],
+  [
     { token = "$u2_ok", fg = "#84b084" },
     { token = "$u2_warn", fg = "#cdaa65" },
     { token = "$u2_bad", fg = "#ca6470" },
     { token = "$u2_na", dim = true },
+  ],
+  [
+    { token = "$u3_ok", fg = "#84b084" },
+    { token = "$u3_warn", fg = "#cdaa65" },
+    { token = "$u3_bad", fg = "#ca6470" },
+    { token = "$u3_na", dim = true },
   ],
 ]
 ```

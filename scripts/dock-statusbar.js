@@ -16,7 +16,7 @@ const herdr = process.env.HERDR_BIN_PATH ?? "herdr";
 const pluginId = process.env.HERDR_PLUGIN_ID ?? "herdr-plugin-agent-quota";
 const stateDir = process.env.HERDR_PLUGIN_STATE_DIR || null;
 
-const BAR_ROWS = 5; // header + three agent rows + breathing room
+const BAR_ROWS = 8; // header + up to seven current provider windows
 
 function run(args) {
   const r = spawnSync(herdr, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
