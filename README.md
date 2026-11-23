@@ -190,6 +190,7 @@ defaults on first run (a legacy `sidebar.json` is migrated automatically):
 
 ```toml
 display = "used"
+gauge = "boxes"
 showModel = true
 
 [kindMap]
@@ -199,6 +200,10 @@ omp = "claude"
 - `display` — `"used"` (default) shows consumed percentage; `"remaining"`
   shows what is left (gauges follow, severity still tracks consumption).
   The sidebar, status bar, and `--oneline` output honor the same setting.
+- `gauge` — how the sidebar row draws each window: `"boxes"` (default,
+  `▰▰▱▱▱`), `"lines"` (`━━───`), `"blocks"` (`██▎░░`, eighth-cell steps),
+  `"dots"` (`●●○○○`), or `"none"` (percentage only). A token has a single
+  color, so filled and empty cells differ by shape.
 - `kindMap` — which vendor's quota an agent kind shows; defaults to
   `claude→CC, codex→CDX, grok→GRX, agy→AGY, omp→CC`.
 - `showModel` — `true` (default) watches each omp pane's session log, fills
