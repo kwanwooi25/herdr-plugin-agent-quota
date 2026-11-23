@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Agent Quota dashboard: token & cost usage for Claude Code, Codex, and Grok.
+// Agent Quota dashboard: token & cost usage for Claude Code, Codex, and Grok;
+// rate-limit views also cover Antigravity.
 //
 // Interactive TUI when run in a Herdr popup pane (or any TTY).
 // `node index.js --report [--days N]` prints a plain-text report and exits.
@@ -8,10 +9,11 @@
 const { collectUsage } = require("./lib/collect");
 const { loadSidebarConfig } = require("./lib/config");
 
-const AGENTS = ["claude", "codex", "grok"];
-const AGENT_LABEL = { claude: "Claude Code", codex: "Codex", grok: "Grok" };
-const AGENT_SHORT = { claude: "CC", codex: "CDX", grok: "GRX" };
-const AGENT_COLOR = { claude: 208, codex: 75, grok: 250 };
+const AGENTS = ["claude", "codex", "grok"]; // token & cost usage
+const LIMIT_AGENTS = ["claude", "codex", "grok", "agy"]; // rate limits
+const AGENT_LABEL = { claude: "Claude Code", codex: "Codex", grok: "Grok", agy: "Antigravity" };
+const AGENT_SHORT = { claude: "CC", codex: "CDX", grok: "GRX", agy: "AGY" };
+const AGENT_COLOR = { claude: 208, codex: 75, grok: 250, agy: 105 };
 
 const stateDir = process.env.HERDR_PLUGIN_STATE_DIR || null;
 const configDir = process.env.HERDR_PLUGIN_CONFIG_DIR || null;
@@ -316,7 +318,8 @@ function localTimeZone() {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "local";
 }
 
-function fmtReset(ms) {
+// clock "12h": 11:19pm, Nov 29 6pm; "24h": 23:19, Nov 29 18:00.
+function fmtReset(ms, clock = "12h") {
   const reset = new Date(ms);
   if (!Number.isFinite(reset.getTime())) return null;
   const now = new Date();
@@ -324,13 +327,17 @@ function fmtReset(ms) {
     reset.getFullYear() === now.getFullYear() &&
     reset.getMonth() === now.getMonth() &&
     reset.getDate() === now.getDate();
-  const hour = reset.getHours() % 12 || 12;
   const minute = String(reset.getMinutes()).padStart(2, "0");
+  const month = reset.toLocaleString("en-US", { month: "short" });
+  if (clock === "24h") {
+    const time = `${String(reset.getHours()).padStart(2, "0")}:${minute}`;
+    return sameDay ? time : `${month} ${reset.getDate()} ${time}`;
+  }
+  const hour = reset.getHours() % 12 || 12;
   const period = reset.getHours() < 12 ? "am" : "pm";
   if (sameDay) return `${hour}:${minute}${period}`;
-  const month = reset.toLocaleString("en-US", { month: "short" });
-  const clock = minute === "00" ? `${hour}${period}` : `${hour}:${minute}${period}`;
-  return `${month} ${reset.getDate()} ${clock}`;
+  const time = minute === "00" ? `${hour}${period}` : `${hour}:${minute}${period}`;
+  return `${month} ${reset.getDate()} ${time}`;
 }
 
 function gauge(pct, width, usedPct = pct) {
@@ -344,18 +351,18 @@ function gauge(pct, width, usedPct = pct) {
 
 async function statusbarMode() {
   const { collectLimits } = require("./lib/limits");
-  let limits = { claude: null, codex: null, grok: null };
+  let limits = { claude: null, codex: null, grok: null, agy: null };
 
   const out = process.stdout;
   out.write("\x1b[?1049h\x1b[?25l");
   const restore = () => out.write("\x1b[?25h\x1b[?1049l");
 
   const draw = () => {
-    const display = loadSidebarConfig(configDir).display;
+    const { display, clock } = loadSidebarConfig(configDir);
     const cols = out.columns || 44;
     const barW = cols >= 46 ? 6 : 4;
     const lines = [` ${bold("Quota")} ${dim(`· ${display} · ${localTimeZone()}`)}`];
-    for (const a of AGENTS) {
+    for (const a of LIMIT_AGENTS) {
       const snap = limits[a];
       const provider = fg(AGENT_COLOR[a], bold(pad(AGENT_SHORT[a], 3)));
       if (!snap || snap.windows.length === 0) {
@@ -373,7 +380,7 @@ async function statusbarMode() {
         const used = Math.max(0, Math.min(100, w.pct));
         const shown = display === "remaining" ? 100 - used : used;
         const age = stale ? dim(` ·${fmtAge(snap.asOfMs)} old`) : "";
-        const reset = w.resetsAt ? fmtReset(w.resetsAt) : null;
+        const reset = w.resetsAt ? fmtReset(w.resetsAt, clock) : null;
         const resetSuffix = reset ? dim(` ↻${reset}`) : "";
         lines.push(` ${provider} ${label} ${gauge(shown, barW, used)}${age}${resetSuffix}`);
       }
@@ -453,15 +460,14 @@ if (argv.includes("--limits")) {
 } else if (argv.includes("--oneline")) {
   // One-line plain-text summary for a `ui.tab_bar_right` command entry.
   // Honors the same sidebar.toml display mode (used | remaining).
-  const { collectLimits } = require("./lib/limits");
+  const { collectLimits, summaryWindows } = require("./lib/limits");
   const display = loadSidebarConfig(configDir).display;
   collectLimits().then(
     (l) => {
       const parts = [];
-      for (const a of AGENTS) {
+      for (const a of LIMIT_AGENTS) {
         const snap = l[a];
-        if (!snap || snap.windows.length === 0) continue;
-        const live = snap.windows.filter((w) => !(w.resetsAt && w.resetsAt < Date.now()));
+        const live = summaryWindows(snap).filter((w) => !(w.resetsAt && w.resetsAt < Date.now()));
         if (live.length === 0) continue;
         const cell = (w) => {
           const used = Math.max(0, Math.min(100, w.pct));
