@@ -34,7 +34,7 @@ const flagPath = path.join(stateDir, "sidebar-reporter.enabled");
 const logPath = path.join(stateDir, "sidebar-reporter.log");
 
 const { loadSidebarConfig } = require("../lib/config");
-const SHORT = { claude: "CC", codex: "CDX", grok: "GRX" };
+const SHORT = { claude: "CC", codex: "CDX", grok: "GRX", agy: "AGY" };
 
 function run(args) {
   const r = spawnSync(herdr, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
@@ -60,10 +60,29 @@ function alivePid() {
 
 // ------------------------------------------------------------------ text
 
-function gaugeText(pct) {
-  const p = Math.max(0, Math.min(100, pct));
+// A token has one color, so filled and empty cells differ by shape. It gets
+// the percentage as displayed (rounded), so the bar always agrees with the
+// number: any nonzero shown value fills at least one cell (one eighth for
+// "blocks"). A nonfinite value draws as 0.
+const GAUGE_CELLS = {
+  boxes: ["\u25b0", "\u25b1"], // ▰ ▱
+  lines: ["\u2501", "\u2500"], // ━ ─
+  dots: ["\u25cf", "\u25cb"], // ● ○
+};
+const EIGHTHS = ["", "\u258f", "\u258e", "\u258d", "\u258c", "\u258b", "\u258a", "\u2589"]; // ▏…▉
+
+function gaugeText(pct, style = "boxes") {
+  const p = Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : 0;
+  if (style === "none") return "";
+  if (style === "blocks") {
+    const eighths = Math.max(p > 0 ? 1 : 0, Math.round((p / 100) * GAUGE_W * 8));
+    const full = Math.floor(eighths / 8);
+    const part = EIGHTHS[eighths % 8];
+    return "\u2588".repeat(full) + part + "\u2591".repeat(GAUGE_W - full - (part ? 1 : 0)); // █ … ░
+  }
+  const [on, off] = GAUGE_CELLS[style] || GAUGE_CELLS.boxes;
   const filled = Math.max(p > 0 ? 1 : 0, Math.round((p / 100) * GAUGE_W));
-  return "\u25b0".repeat(filled) + "\u25b1".repeat(GAUGE_W - filled);
+  return on.repeat(filled) + off.repeat(GAUGE_W - filled);
 }
 
 // Sidebar tokens per pane. Dynamic color via severity-variant tokens: each
@@ -109,13 +128,15 @@ function fmtReset(ms) {
   return `${month} ${reset.getDate()} ${clock}`;
 }
 
-function usageTokens(vendor, snap, display) {
-  if (!snap || snap.windows.length === 0) return null;
+function usageTokens(vendor, snap, display, gauge) {
+  const { summaryWindows } = require("../lib/limits");
+  const windows = summaryWindows(snap);
+  if (windows.length === 0) return null;
   // A stale fallback sample (no live data for a while) must not wear a
   // confident severity color: render dim with its age instead.
   const stale = !snap.live && Date.now() - snap.asOfMs > STALE_MS;
   const tokens = { upfx: SHORT[vendor] };
-  snap.windows.slice(0, SLOTS).forEach((w, i) => {
+  windows.slice(0, SLOTS).forEach((w, i) => {
     if (w.resetsAt && w.resetsAt < Date.now()) {
       tokens[`u${i + 1}_na`] = `${w.label} -%`;
       return;
@@ -128,8 +149,9 @@ function usageTokens(vendor, snap, display) {
       tokens[`u${i + 1}_na`] = `${w.label} ${shown}% ·${fmtAge(snap.asOfMs)}${resetSuffix}`;
       return;
     }
+    const bar = gaugeText(shown, gauge);
     tokens[`u${i + 1}_${severity(used)}`] =
-      `${w.label} ${gaugeText(shown)} ${shown}%${resetSuffix}`;
+      `${w.label} ${bar ? `${bar} ` : ""}${shown}%${resetSuffix}`;
   });
   return tokens;
 }
@@ -181,7 +203,7 @@ function agentTokens(agent, limits, cfg) {
     model = ompModel(agent.agent_session.value);
     if (model) vendor = vendorForModel(model) || vendor;
   }
-  const tokens = (vendor && usageTokens(vendor, limits[vendor], cfg.display)) || {};
+  const tokens = (vendor && usageTokens(vendor, limits[vendor], cfg.display, cfg.gauge)) || {};
   if (model) tokens.umodel = model;
   return Object.keys(tokens).length > 0 ? { model, tokens } : null;
 }
@@ -262,7 +284,7 @@ async function tick(runtime) {
   const limits = await collectLimits();
   process.stderr.write(
     `[${new Date().toISOString()}] limits ` +
-      ["claude", "codex", "grok"]
+      ["claude", "codex", "grok", "agy"]
         .map((v) => `${v}=${limits[v] ? (limits[v].live ? "live" : "file") : "none"}`)
         .join(" ") +
       "\n",

@@ -1,7 +1,8 @@
 # Agent Quota — Herdr plugin
 
 Token and cost usage dashboard for **Claude Code**, **Codex**, and **Grok**,
-rendered in a Herdr popup pane. Zero dependencies, no build step (Node ≥ 18).
+rendered in a Herdr popup pane, plus rate-limit gauges for those three and
+**Antigravity** (`agy`). Zero dependencies, no build step (Node ≥ 18).
 
 ## What it reads
 
@@ -89,6 +90,15 @@ each affected row when falling back to data older than 6 hours):
   `grok agent stdio` process. The grok CLI authenticates with its own stored
   OAuth session (and refreshes tokens itself), so login state is untouched.
   No file fallback exists: the CLI records no quota data locally.
+- **Antigravity** — `agy -p /usage --output-format json`, run in the temp
+  directory. The CLI answers from its own login without calling a model, so
+  it spends no tokens and records no conversation. Quotas come in model
+  groups, each with a 5-hour and/or weekly window. The Gemini group (Neon,
+  Hydrogen, Flash, Orchestrator) is shown as `5h`/`wk`; the others get a
+  prefix (`C/G 5h`, `C/G wk` for Claude/GPT models, `Argon wk`). The status
+  bar lists every window; the sidebar row and `--oneline` show the Gemini
+  windows plus the busiest other window once any of it is used. No file
+  fallback exists.
 
 Privacy: tokens are read locally and sent only to their own vendor's API over
 HTTPS; nothing is logged or written to disk. Live results are cached in
@@ -180,6 +190,7 @@ defaults on first run (a legacy `sidebar.json` is migrated automatically):
 
 ```toml
 display = "used"
+gauge = "boxes"
 showModel = true
 
 [kindMap]
@@ -189,8 +200,12 @@ omp = "claude"
 - `display` — `"used"` (default) shows consumed percentage; `"remaining"`
   shows what is left (gauges follow, severity still tracks consumption).
   The sidebar, status bar, and `--oneline` output honor the same setting.
+- `gauge` — how the sidebar row draws each window: `"boxes"` (default,
+  `▰▰▱▱▱`), `"lines"` (`━━───`), `"blocks"` (`██▎░░`, eighth-cell steps),
+  `"dots"` (`●●○○○`), or `"none"` (percentage only). A token has a single
+  color, so filled and empty cells differ by shape.
 - `kindMap` — which vendor's quota an agent kind shows; defaults to
-  `claude→CC, codex→CDX, grok→GRX, omp→CC`.
+  `claude→CC, codex→CDX, grok→GRX, agy→AGY, omp→CC`.
 - `showModel` — `true` (default) watches each omp pane's session log, fills
   `$umodel` within about 250 ms of a model change, and routes that pane's quota
   to the model's vendor; `false` keeps the static `kindMap` routing and hides

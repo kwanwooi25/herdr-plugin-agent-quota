@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Agent Quota dashboard: token & cost usage for Claude Code, Codex, and Grok.
+// Agent Quota dashboard: token & cost usage for Claude Code, Codex, and Grok;
+// rate-limit views also cover Antigravity.
 //
 // Interactive TUI when run in a Herdr popup pane (or any TTY).
 // `node index.js --report [--days N]` prints a plain-text report and exits.
@@ -8,10 +9,11 @@
 const { collectUsage } = require("./lib/collect");
 const { loadSidebarConfig } = require("./lib/config");
 
-const AGENTS = ["claude", "codex", "grok"];
-const AGENT_LABEL = { claude: "Claude Code", codex: "Codex", grok: "Grok" };
-const AGENT_SHORT = { claude: "CC", codex: "CDX", grok: "GRX" };
-const AGENT_COLOR = { claude: 208, codex: 75, grok: 250 };
+const AGENTS = ["claude", "codex", "grok"]; // token & cost usage
+const LIMIT_AGENTS = ["claude", "codex", "grok", "agy"]; // rate limits
+const AGENT_LABEL = { claude: "Claude Code", codex: "Codex", grok: "Grok", agy: "Antigravity" };
+const AGENT_SHORT = { claude: "CC", codex: "CDX", grok: "GRX", agy: "AGY" };
+const AGENT_COLOR = { claude: 208, codex: 75, grok: 250, agy: 105 };
 
 const stateDir = process.env.HERDR_PLUGIN_STATE_DIR || null;
 const configDir = process.env.HERDR_PLUGIN_CONFIG_DIR || null;
@@ -344,7 +346,7 @@ function gauge(pct, width, usedPct = pct) {
 
 async function statusbarMode() {
   const { collectLimits } = require("./lib/limits");
-  let limits = { claude: null, codex: null, grok: null };
+  let limits = { claude: null, codex: null, grok: null, agy: null };
 
   const out = process.stdout;
   out.write("\x1b[?1049h\x1b[?25l");
@@ -355,7 +357,7 @@ async function statusbarMode() {
     const cols = out.columns || 44;
     const barW = cols >= 46 ? 6 : 4;
     const lines = [` ${bold("Quota")} ${dim(`· ${display} · ${localTimeZone()}`)}`];
-    for (const a of AGENTS) {
+    for (const a of LIMIT_AGENTS) {
       const snap = limits[a];
       const provider = fg(AGENT_COLOR[a], bold(pad(AGENT_SHORT[a], 3)));
       if (!snap || snap.windows.length === 0) {
@@ -453,15 +455,14 @@ if (argv.includes("--limits")) {
 } else if (argv.includes("--oneline")) {
   // One-line plain-text summary for a `ui.tab_bar_right` command entry.
   // Honors the same sidebar.toml display mode (used | remaining).
-  const { collectLimits } = require("./lib/limits");
+  const { collectLimits, summaryWindows } = require("./lib/limits");
   const display = loadSidebarConfig(configDir).display;
   collectLimits().then(
     (l) => {
       const parts = [];
-      for (const a of AGENTS) {
+      for (const a of LIMIT_AGENTS) {
         const snap = l[a];
-        if (!snap || snap.windows.length === 0) continue;
-        const live = snap.windows.filter((w) => !(w.resetsAt && w.resetsAt < Date.now()));
+        const live = summaryWindows(snap).filter((w) => !(w.resetsAt && w.resetsAt < Date.now()));
         if (live.length === 0) continue;
         const cell = (w) => {
           const used = Math.max(0, Math.min(100, w.pct));
