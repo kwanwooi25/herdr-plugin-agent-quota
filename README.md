@@ -191,6 +191,7 @@ defaults on first run (a legacy `sidebar.json` is migrated automatically):
 ```toml
 display = "used"
 gauge = "boxes"
+clock = "12h"
 showModel = true
 
 [kindMap]
@@ -204,6 +205,9 @@ omp = "claude"
   `▰▰▱▱▱`), `"lines"` (`━━───`), `"blocks"` (`██▎░░`, eighth-cell steps),
   `"dots"` (`●●○○○`), or `"none"` (percentage only). A token has a single
   color, so filled and empty cells differ by shape.
+- `clock` — how reset times are written in the sidebar and status bar:
+  `"12h"` (default; `↻11:19pm`, `↻Nov 29 6pm`) or `"24h"` (`↻23:19`,
+  `↻Nov 29 18:00`).
 - `kindMap` — which vendor's quota an agent kind shows; defaults to
   `claude→CC, codex→CDX, grok→GRX, agy→AGY, omp→CC`.
 - `showModel` — `true` (default) watches each omp pane's session log, fills

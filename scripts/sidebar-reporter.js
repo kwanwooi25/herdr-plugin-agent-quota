@@ -111,7 +111,8 @@ function fmtAge(ms) {
   return `${Math.round(m / 1440)}d`;
 }
 
-function fmtReset(ms) {
+// clock "12h": 11:19pm, Nov 29 6pm; "24h": 23:19, Nov 29 18:00.
+function fmtReset(ms, clock = "12h") {
   const reset = new Date(ms);
   if (!Number.isFinite(reset.getTime())) return null;
   const now = new Date();
@@ -119,16 +120,20 @@ function fmtReset(ms) {
     reset.getFullYear() === now.getFullYear() &&
     reset.getMonth() === now.getMonth() &&
     reset.getDate() === now.getDate();
-  const hour = reset.getHours() % 12 || 12;
   const minute = String(reset.getMinutes()).padStart(2, "0");
+  const month = reset.toLocaleString("en-US", { month: "short" });
+  if (clock === "24h") {
+    const time = `${String(reset.getHours()).padStart(2, "0")}:${minute}`;
+    return sameDay ? time : `${month} ${reset.getDate()} ${time}`;
+  }
+  const hour = reset.getHours() % 12 || 12;
   const period = reset.getHours() < 12 ? "am" : "pm";
   if (sameDay) return `${hour}:${minute}${period}`;
-  const month = reset.toLocaleString("en-US", { month: "short" });
-  const clock = minute === "00" ? `${hour}${period}` : `${hour}:${minute}${period}`;
-  return `${month} ${reset.getDate()} ${clock}`;
+  const time = minute === "00" ? `${hour}${period}` : `${hour}:${minute}${period}`;
+  return `${month} ${reset.getDate()} ${time}`;
 }
 
-function usageTokens(vendor, snap, display, gauge) {
+function usageTokens(vendor, snap, display, gauge, clock) {
   const { summaryWindows } = require("../lib/limits");
   const windows = summaryWindows(snap);
   if (windows.length === 0) return null;
@@ -143,7 +148,7 @@ function usageTokens(vendor, snap, display, gauge) {
     }
     const used = Math.max(0, Math.min(100, w.pct));
     const shown = Math.round(display === "remaining" ? 100 - used : used);
-    const reset = w.resetsAt ? fmtReset(w.resetsAt) : null;
+    const reset = w.resetsAt ? fmtReset(w.resetsAt, clock) : null;
     const resetSuffix = reset ? ` ↻${reset}` : "";
     if (stale) {
       tokens[`u${i + 1}_na`] = `${w.label} ${shown}% ·${fmtAge(snap.asOfMs)}${resetSuffix}`;
@@ -203,7 +208,7 @@ function agentTokens(agent, limits, cfg) {
     model = ompModel(agent.agent_session.value);
     if (model) vendor = vendorForModel(model) || vendor;
   }
-  const tokens = (vendor && usageTokens(vendor, limits[vendor], cfg.display, cfg.gauge)) || {};
+  const tokens = (vendor && usageTokens(vendor, limits[vendor], cfg.display, cfg.gauge, cfg.clock)) || {};
   if (model) tokens.umodel = model;
   return Object.keys(tokens).length > 0 ? { model, tokens } : null;
 }

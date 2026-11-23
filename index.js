@@ -318,7 +318,8 @@ function localTimeZone() {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "local";
 }
 
-function fmtReset(ms) {
+// clock "12h": 11:19pm, Nov 29 6pm; "24h": 23:19, Nov 29 18:00.
+function fmtReset(ms, clock = "12h") {
   const reset = new Date(ms);
   if (!Number.isFinite(reset.getTime())) return null;
   const now = new Date();
@@ -326,13 +327,17 @@ function fmtReset(ms) {
     reset.getFullYear() === now.getFullYear() &&
     reset.getMonth() === now.getMonth() &&
     reset.getDate() === now.getDate();
-  const hour = reset.getHours() % 12 || 12;
   const minute = String(reset.getMinutes()).padStart(2, "0");
+  const month = reset.toLocaleString("en-US", { month: "short" });
+  if (clock === "24h") {
+    const time = `${String(reset.getHours()).padStart(2, "0")}:${minute}`;
+    return sameDay ? time : `${month} ${reset.getDate()} ${time}`;
+  }
+  const hour = reset.getHours() % 12 || 12;
   const period = reset.getHours() < 12 ? "am" : "pm";
   if (sameDay) return `${hour}:${minute}${period}`;
-  const month = reset.toLocaleString("en-US", { month: "short" });
-  const clock = minute === "00" ? `${hour}${period}` : `${hour}:${minute}${period}`;
-  return `${month} ${reset.getDate()} ${clock}`;
+  const time = minute === "00" ? `${hour}${period}` : `${hour}:${minute}${period}`;
+  return `${month} ${reset.getDate()} ${time}`;
 }
 
 function gauge(pct, width, usedPct = pct) {
@@ -353,7 +358,7 @@ async function statusbarMode() {
   const restore = () => out.write("\x1b[?25h\x1b[?1049l");
 
   const draw = () => {
-    const display = loadSidebarConfig(configDir).display;
+    const { display, clock } = loadSidebarConfig(configDir);
     const cols = out.columns || 44;
     const barW = cols >= 46 ? 6 : 4;
     const lines = [` ${bold("Quota")} ${dim(`· ${display} · ${localTimeZone()}`)}`];
@@ -375,7 +380,7 @@ async function statusbarMode() {
         const used = Math.max(0, Math.min(100, w.pct));
         const shown = display === "remaining" ? 100 - used : used;
         const age = stale ? dim(` ·${fmtAge(snap.asOfMs)} old`) : "";
-        const reset = w.resetsAt ? fmtReset(w.resetsAt) : null;
+        const reset = w.resetsAt ? fmtReset(w.resetsAt, clock) : null;
         const resetSuffix = reset ? dim(` ↻${reset}`) : "";
         lines.push(` ${provider} ${label} ${gauge(shown, barW, used)}${age}${resetSuffix}`);
       }
