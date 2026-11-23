@@ -34,7 +34,7 @@ const flagPath = path.join(stateDir, "sidebar-reporter.enabled");
 const logPath = path.join(stateDir, "sidebar-reporter.log");
 
 const { loadSidebarConfig } = require("../lib/config");
-const SHORT = { claude: "CC", codex: "CDX", grok: "GRX" };
+const SHORT = { claude: "CC", codex: "CDX", grok: "GRX", agy: "AGY" };
 
 function run(args) {
   const r = spawnSync(herdr, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
@@ -110,12 +110,14 @@ function fmtReset(ms) {
 }
 
 function usageTokens(vendor, snap, display) {
-  if (!snap || snap.windows.length === 0) return null;
+  const { summaryWindows } = require("../lib/limits");
+  const windows = summaryWindows(snap);
+  if (windows.length === 0) return null;
   // A stale fallback sample (no live data for a while) must not wear a
   // confident severity color: render dim with its age instead.
   const stale = !snap.live && Date.now() - snap.asOfMs > STALE_MS;
   const tokens = { upfx: SHORT[vendor] };
-  snap.windows.slice(0, SLOTS).forEach((w, i) => {
+  windows.slice(0, SLOTS).forEach((w, i) => {
     if (w.resetsAt && w.resetsAt < Date.now()) {
       tokens[`u${i + 1}_na`] = `${w.label} -%`;
       return;
@@ -262,7 +264,7 @@ async function tick(runtime) {
   const limits = await collectLimits();
   process.stderr.write(
     `[${new Date().toISOString()}] limits ` +
-      ["claude", "codex", "grok"]
+      ["claude", "codex", "grok", "agy"]
         .map((v) => `${v}=${limits[v] ? (limits[v].live ? "live" : "file") : "none"}`)
         .join(" ") +
       "\n",
